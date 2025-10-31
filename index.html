@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Igeelemző játék — modern dizájn (bővített mondatok)</title>
+<style>
+  /* 🌈 Háttér és alap beállítások */
+  body {
+    font-family: "Poppins", Arial, sans-serif;
+    background: linear-gradient(135deg, #ff0a57 0%, #ff5f97 40%, #9a33d6 100%);
+    color: #fff;
+    text-align: center;
+    padding: 40px 20px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    font-size: 2.2em;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  p.small {
+    color: rgba(255,255,255,0.9);
+    font-size: 0.95em;
+    margin-bottom: 20px;
+  }
+
+  /* 🧩 Mondatdoboz (kártya) */
+  #sentence {
+    background: #fff;
+    color: #333;
+    display: inline-block;
+    padding: 22px;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    max-width: 820px;
+    margin-bottom: 18px;
+  }
+
+  .word-button {
+    display: inline-block;
+    margin: 6px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: none;
+    background: #f5f5f7;
+    cursor: pointer;
+    font-size: 15px;
+    transition: transform .18s ease, background .18s ease, color .18s ease;
+  }
+
+  .word-button:hover {
+    transform: translateY(-3px);
+  }
+
+  .word-button.selected {
+    background: #ff004f;
+    color: #fff;
+    transform: scale(1.04);
+  }
+
+  .word-button.correct {
+    background: #2ecc71;
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(46,204,113,0.2);
+  }
+
+  .word-button.incorrect {
+    background: #ffdede;
+    color: #a00000;
+  }
+
+  /* 🎮 Gombok és vezérlők */
+  .controls {
+    margin-top: 14px;
+  }
+
+  button, select {
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: none;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+
+  #newBtn {
+    background: #fff;
+    color: #ff004f;
+    font-weight: 700;
+    border: 2px solid rgba(255,255,255,0.06);
+  }
+
+  #newBtn:hover {
+    background: #ff004f;
+    color: #fff;
+  }
+
+  select {
+    background: #fff;
+    color: #333;
+    border: 1px solid #ddd;
+    min-width: 200px;
+  }
+
+  /* 🧾 Elemzés lépések - vízszintes "fülek" */
+  #analysis {
+    margin-top: 22px;
+  }
+
+  .steps-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: flex-start;
+    flex-wrap: wrap; /* kisebb képernyőn sorokba törhet */
+    margin-bottom: 12px;
+  }
+
+  .step {
+    background: #fff;
+    color: #333;
+    padding: 12px 16px;
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+    min-width: 200px;
+    text-align: left;
+  }
+
+  .step span.label {
+    display:block;
+    font-weight:600;
+    margin-bottom:8px;
+  }
+
+  /* ✅ Visszajelzés és pontszám */
+  #feedback {
+    margin-top: 14px;
+    font-weight: 700;
+    min-height: 36px;
+  }
+
+  /* Hibás (korábban piros szöveg) most: fehér szöveg piros háttéren */
+  .wrong {
+    color: #fff;
+    background: #ff3b3b;
+    display: inline-block;
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  /* Teljesen helyes üzenet: zöld háttér, fehér szöveg */
+  .correct {
+    color: #fff;
+    background: #2ecc71;
+    display: inline-block;
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  #score {
+    margin-top: 18px;
+    font-weight: 800;
+    background: rgba(255,255,255,0.12);
+    display: inline-block;
+    padding: 10px 18px;
+    border-radius: 10px;
+  }
+
+  /* kisebb képernyőn a kártya szélessége csökkenjen */
+  @media (max-width:640px) {
+    #sentence { max-width: 95%; padding: 18px; }
+    .step { min-width: 160px; }
+    select { min-width: 150px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Igeelemző játék</h1>
+<p class="small">Kattints a mondatban az igére (több ige is lehet). Ha elsőként nem az igét választod, -1 pont jár. A következő feladat csak az "Új mondat" gombra kattintva jelenik meg — így marad időd átnézni a visszajelzést.</p>
+
+<div id="sentence"></div>
+<div class="controls">
+  <button id="newBtn">Új mondat</button>
+</div>
+
+<div id="analysis"></div>
+
+<div id="feedback"></div>
+<div id="score">Pontszám: 0/0 (0%)</div>
+<div id="summary"></div>
+
+<script>
+/*
+  Sentences with detailed verb analysis (jelentés, mód, idő, tárgyasság, ragozás ahol releváns)
+*/
+const sentences = [
+  { text:"A kislányok a játszótéren kacagtak vidáman egész délután.",
+    verbs: {
+      "kacagtak": { jelentés:"cselekvés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Az édesanya finom palacsintát sütött a nagy családnak reggelire.",
+    verbs: {
+      "sütött": { jelentés:"cselekvés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"A postás minden reggel pontosan kézbesíti a leveleket a házakhoz.",
+    verbs: {
+      "kézbesíti": { jelentés:"cselekvés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyas", ragozás:"tárgyas" }
+    }
+  },
+  { text:"A festőművész gyors ecsetvonásokkal alkotta meg a lenyűgöző képet.",
+    verbs: {
+      "alkotta": { jelentés:"cselekvés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyas", ragozás:"tárgyas" }
+    }
+  },
+  { text:"A gyerekek hosszan vártak türelmesen a Mikulás érkezésére a teremben.",
+    verbs: {
+      "vártak": { jelentés:"cselekvés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"A régész izgalmas leleteket ásott ki a földből a helyszínen.",
+    verbs: {
+      "ásott": { jelentés:"cselekvés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"A diákok szorgalmasan tanulják a bonyolult angol nyelvtant is most.",
+    verbs: {
+      "tanulják": { jelentés:"cselekvés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyas", ragozás:"tárgyas" }
+    }
+  },
+  { text:"A takarítónő gondosan feltörölte a padlót a nagyszobában is ma.",
+    verbs: {
+      "feltörölte": { jelentés:"cselekvés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyas", ragozás:"tárgyas" }
+    }
+  },
+  { text:"A nagypapa minden este mesét olvas az unokájának elalvás előtt.",
+    verbs: {
+      "olvas": { jelentés:"cselekvés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"Az igazgató kedden délelőtt hosszú beszédet mondott az alkalmazottaknak.",
+    verbs: {
+      "mondott": { jelentés:"cselekvés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"Senki sincs otthon ma Pápán.",
+    verbs: {
+      "sincs": { jelentés:"létezés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A nagymamám szép, horgolt terítőket készített ajándékba a rokonoknak.",
+    verbs: {
+      "készített": { jelentés:"cselekvés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"A futók izzadságos kilométereket teljesítenek a maraton útvonalán éppen.",
+    verbs: {
+      "teljesítenek": { jelentés:"cselekvés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"A kutyus boldogan csóválja a farkát, amikor meglátja a gazdáját.",
+    verbs: {
+      "csóválja": { jelentés:"cselekvés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyas", ragozás:"tárgyas" },
+      "meglátja": { jelentés:"cselekvés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyas", ragozás:"tárgyas" }
+    }
+  },
+  { text:"A kertész szorgosan metszi a szőlőtőkéket a gyönyörű szőlőskertben.",
+    verbs: {
+      "metszi": { jelentés:"cselekvés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyas", ragozás:"tárgyas" }
+    }
+  },
+  { text:"A viharos szélben a régi faág letörött az öreg fáról váratlanul.",
+    verbs: {
+      "letörött": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A tegnap esti felhőszakadástól a folyó vize nagyon megáradt mára.",
+    verbs: {
+      "megáradt": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A hirtelen jött zivatarban az ég elsötétült egészen ijesztően.",
+    verbs: {
+      "elsötétült": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Az elfelejtett tej a tűzhelyen gyorsan kifutott a fazékból váratlanul.",
+    verbs: {
+      "kifutott": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A melegben a frissen kiteregetett ruhák megszáradtak meglepően hamar.",
+    verbs: {
+      "megszáradtak": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A fáradtságtól a hosszú nap után a szemem gyorsan lecsukódott este.",
+    verbs: {
+      "lecsukódott": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A régóta tartó betegségből a kislány végre teljesen felépült a héten.",
+    verbs: {
+      "felépült": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Az öreg autóm motorja váratlanul leállt a zsúfolt autópályán ma.",
+    verbs: {
+      "leállt": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A szomszédasszony kerti virágai gyorsan elnyíltak a nagy melegben.",
+    verbs: {
+      "elnyíltak": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A sűrű köd miatt a látótávolság jelentősen lecsökkent a hegyekben.",
+    verbs: {
+      "lecsökkent": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A reggeli fagyos éjszaka után a rét vize megfagyott reggelre.",
+    verbs: {
+      "megfagyott": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A cserépben lévő kis növényke szépen kizöldült a tavaszi napfényben.",
+    verbs: {
+      "kizöldült": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A gyertyaláng a huzattól azonnal elaludt a széles ablakpárkányon.",
+    verbs: {
+      "elaludt": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A frissen festett fal a szobában majd hamarosan megszárad teljesen.",
+    verbs: {
+      "megszárad": { jelentés:"történés", mód:"kijelentő", idő:"jövő", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A tengerparton a hőmérséklet hirtelen lehűlt a délután folyamán.",
+    verbs: {
+      "lehűlt": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A régi könyvtárban rengeteg izgalmas és érdekes kötet van elhelyezve.",
+    verbs: {
+      "van": { jelentés:"létezés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A családi asztalon mindig finom, meleg étel lesz vasárnap délben.",
+    verbs: {
+      "lesz": { jelentés:"létezés", mód:"kijelentő", idő:"jövő", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Az állatkertben sok ritka és egzotikus állat létezik békében.",
+    verbs: {
+      "létezik": { jelentés:"létezés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A nyári szünet lassan, de biztosan elmúlik minden évben sajnos.",
+    verbs: {
+      "elmúlik": { jelentés:"történés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Remélhetőleg a jövő évben sokkal szebb idő lesz a tengerparton.",
+    verbs: {
+      "lesz": { jelentés:"létezés", mód:"kijelentő", idő:"jövő", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Az éjszakai sötétben csend és békesség volt a kis faluban.",
+    verbs: {
+      "volt": { jelentés:"létezés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Nincsenek emlékeim rólad még.",
+    verbs: {
+      "nincsenek": { jelentés:"létezés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A barátommal való utolsó találkozónk óta sok idő múlt el máris.",
+    verbs: {
+      "múlt": { jelentés:"történés", mód:"kijelentő", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Jövőre már negyedik osztályos tanuló lesz a kisebbik testvérem.",
+    verbs: {
+      "lesz": { jelentés:"létezés", mód:"kijelentő", idő:"jövő", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Sokan vagyunk fenn a hegyen ma délután.",
+    verbs: {
+      "vagyunk": { jelentés:"létezés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Fussunk gyorsan a parkon keresztül, hogy elérjük a buszt időben!",
+    verbs: {
+      "Fussunk": { jelentés:"cselekvés", mód:"felszólító", idő:"jelen", tárgyasság:"tárgyatlan" },
+      "elérjük": { jelentés:"cselekvés", mód:"kijelentő", idő:"jelen", tárgyasság:"tárgyas", ragozás: "tárgyas" }
+    }
+  },
+  { text:"Ha több időnk lenne, elmennénk megnézni azt az izgalmas kiállítást.",
+    verbs: {
+      "lenne": { jelentés:"létezés", mód:"feltételes", idő:"jelen", tárgyasság:"tárgyatlan" },
+      "elmennénk": { jelentés:"cselekvés", mód:"feltételes", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Írjatok le minden fontos információt a füzetbe, ne felejtsetek el semmit!",
+    verbs: {
+      "Írjatok": { jelentés:"cselekvés", mód:"felszólító", idő:"jelen", tárgyasság:"tárgyas",ragozás:"alanyi" },
+      "ne felejtsetek": { jelentés:"cselekvés", mód:"felszólító", idő:"jelen", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"Bárcsak a nyaralásunk örökké tartana a napsütötte tengerparton!",
+    verbs: {
+      "tartana": { jelentés:"történés", mód:"feltételes", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Adjatok még egy szeletet abból az ízletes tortából nekem.",
+    verbs: {
+      "Adjatok": { jelentés:"cselekvés", mód:"felszólító", idő:"jelen", tárgyasság:"tárgyas",ragozás:"alanyi" }
+    }
+  },
+  { text:"Ha tudtam volna a problémáról, biztosan segítettem volna azonnal!",
+    verbs: {
+      "tudtam volna": { jelentés:"történés", mód:"feltételes", idő:"múlt", tárgyasság:"tárgyas", ragozás:"tárgyas" },
+      "segítettem volna": { jelentés:"cselekvés", mód:"feltételes", idő:"múlt", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"Legyen neked is csodálatos és nagyon sikeres a következő heted!",
+    verbs: {
+      "Legyen": { jelentés:"létezés", mód:"felszólító", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  },
+  { text:"A vizsgaidőszak sokkal könnyebb volna, ha jobban beosztottam volna az időmet.",
+    verbs: {
+    
+      "beosztottam volna": { jelentés:"cselekvés", mód:"feltételes", idő:"múlt", tárgyasság:"tárgyas", ragozás:"tárgyas" }
+    }
+  },
+  { text:"Hallgassátok meg a tanár magyarázatát figyelmesen, mielőtt elkezdenétek a munkát.",
+    verbs: {
+      "Hallgassátok": { jelentés:"cselekvés", mód:"felszólító", idő:"jelen", tárgyasság:"tárgyas",ragozás:"tárgyas" },
+      "elkezdenétek": { jelentés:"cselekvés", mód:"feltételes", idő:"jelen", tárgyasság:"tárgyas", ragozás:"alanyi" }
+    }
+  },
+  { text:"Szívesen utaznék most melegebb éghajlatra egy hosszú hétvégére is.",
+    verbs: {
+      "utaznék": { jelentés:"cselekvés", mód:"feltételes", idő:"jelen", tárgyasság:"tárgyatlan" }
+    }
+  }
+];
+
+let score = 0;
+let attempts = 0;
+let current = null;
+let currentVerb = "";
+
+const sentenceEl = document.getElementById("sentence");
+const analysisEl = document.getElementById("analysis");
+const feedbackEl = document.getElementById("feedback");
+const scoreEl = document.getElementById("score");
+const summaryEl = document.getElementById("summary");
+const newBtn = document.getElementById("newBtn");
+
+function newSentence() {
+  // tisztítás (de ne állítsuk vissza a pontokat)
+  analysisEl.innerHTML = "";
+  feedbackEl.innerHTML = "";
+  summaryEl.innerHTML = "";
+
+  current = JSON.parse(JSON.stringify(sentences[Math.floor(Math.random()*sentences.length)]));
+  currentVerb = "";
+
+  sentenceEl.innerHTML = "";
+  const words = current.text.split(" ");
+  words.forEach(w => {
+    const clean = w.replace(/[.,!?]/g,"");
+    const btn = document.createElement("button");
+    btn.className = "word-button";
+    btn.textContent = clean;
+    btn.onclick = () => onWordClick(clean, btn);
+    sentenceEl.appendChild(btn);
+  });
+
+  newBtn.disabled = false;
+}
+
+function onWordClick(word, btn) {
+  document.querySelectorAll(".word-button").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+
+  if (!current.verbs.hasOwnProperty(word)) {
+    attempts++;
+    score = Math.max(0, score - 1);
+    updateScoreDisplay();
+    const correctVerbs = Object.keys(current.verbs);
+    feedbackEl.innerHTML = `<div class="wrong">Ez nem ige. Helyes ige(ke): <strong>${correctVerbs.join(", ")}</strong></div>`;
+    document.querySelectorAll(".word-button").forEach(b=>{
+      const txt = b.textContent.trim();
+      if (correctVerbs.includes(txt)) b.classList.add("correct");
+    });
+    return;
+  }
+
+  currentVerb = word;
+  feedbackEl.innerHTML = "";
+  renderAnalysis();
+}
+
+function updateScoreDisplay() {
+  const percent = attempts === 0 ? 0 : Math.round((score / attempts) * 100);
+  scoreEl.textContent = `Pontszám: ${score}/${attempts} (${percent}%)`;
+}
+
+/* --- ANALYSIS RENDER --- */
+function renderAnalysis() {
+  analysisEl.innerHTML = "";
+  const title = document.createElement("h3");
+  title.textContent = `Elemzés: ${currentVerb}`;
+  analysisEl.appendChild(title);
+
+  const row = document.createElement("div");
+  row.className = "steps-row";
+
+  const step1 = createStep("Ige jelentése:", ["", "cselekvés", "történés", "létezés"]);
+  const step2 = createStep("Ige módja:", ["", "kijelentő", "feltételes", "felszólító"]);
+  const step3 = createStep("Ige ideje:", ["", "jelen", "múlt", "jövő"]);
+  const step4 = createStep("Tárgyas vagy tárgyatlan:", ["", "tárgyas", "tárgyatlan"]);
+  const step5 = createStep("Ragozás típusa:", ["", "alanyi", "tárgyas"]);
+
+  const checkBtn = document.createElement("button");
+  checkBtn.textContent = "Ellenőrzés";
+  checkBtn.style.display = "none";
+  checkBtn.style.marginTop = "8px";
+
+  step5.div.appendChild(document.createElement("br"));
+  step5.div.appendChild(checkBtn);
+
+  row.append(step1.div, step2.div, step3.div, step4.div, step5.div);
+  analysisEl.appendChild(row);
+
+  step1.select.addEventListener("change", () => {
+    if (step1.select.value) step2.div.style.display = "block";
+  });
+
+  step2.select.addEventListener("change", () => {
+    if (step2.select.value) step3.div.style.display = "block";
+  });
+
+  step3.select.addEventListener("change", () => {
+    if (step3.select.value) step4.div.style.display = "block";
+  });
+
+  step4.select.addEventListener("change", () => {
+    if (step4.select.value === "tárgyatlan") {
+      evaluateUser({
+        jelentés: step1.select.value,
+        mód: step2.select.value,
+        idő: step3.select.value,
+        tárgyasság: step4.select.value
+      });
+    } else if (step4.select.value === "tárgyas") {
+      step5.div.style.display = "block";
+      checkBtn.style.display = "inline-block";
+    } else {
+      step5.div.style.display = "none";
+      checkBtn.style.display = "none";
+    }
+  });
+
+  checkBtn.addEventListener("click", () => {
+    evaluateUser({
+      jelentés: step1.select.value,
+      mód: step2.select.value,
+      idő: step3.select.value,
+      tárgyasság: step4.select.value,
+      ragozás: step5.select.value
+    });
+  });
+}
+
+function createStep(labelText, options, hidden=false) {
+  const div = document.createElement("div");
+  div.className = "step";
+  if (hidden) div.style.display = "none";
+  const lbl = document.createElement("span");
+  lbl.className = "label";
+  lbl.textContent = labelText;
+  const select = document.createElement("select");
+  options.forEach(v => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v === "" ? "-- válassz --" : v;
+    select.appendChild(opt);
+  });
+  div.appendChild(lbl);
+  div.appendChild(select);
+  return { div, select };
+}
+
+function evaluateUser(userAnswers) {
+  const correctObj = current.verbs[currentVerb];
+  const keysToCheck = Object.keys(correctObj);
+
+  attempts++;
+  let allCorrect = true;
+  const wrongs = [];
+
+  keysToCheck.forEach(k=>{
+    const userVal = userAnswers[k];
+    const correctVal = correctObj[k];
+    if (!userVal || userVal !== correctVal) {
+      allCorrect = false;
+      wrongs.push({key:k, correct:correctVal, given: userVal || "(nem válaszolt)"});
+    }
+  });
+
+  if (allCorrect) {
+    score += 1;
+    feedbackEl.innerHTML = `<div class="correct">Teljesen helyes! +1 pont</div>`;
+  } else {
+    let html = `<div class="wrong">Nem teljesen helyes.</div><div style="height:8px"></div>`;
+    wrongs.forEach(w=>{
+      html += `<div style="display:inline-block;margin:6px;padding:8px 10px;border-radius:8px;background:#ff3b3b;color:#fff;">${niceNameForKey(w.key)}: <strong>${w.correct}</strong> (te: ${w.given})</div>`;
+    });
+    feedbackEl.innerHTML = html;
+  }
+
+  if (score < 0) score = 0;
+  updateScoreDisplay();
+  // Nincs automatikus továbblépés — marad idő az átnézésre
+}
+
+function niceNameForKey(k) {
+  if (k==="jelentés") return "Ige jelentése";
+  if (k==="mód") return "Ige módja";
+  if (k==="idő") return "Ige ideje";
+  if (k==="tárgyasság") return "Tárgyasság";
+  if (k==="ragozás") return "Ragozás típusa";
+  return k;
+}
+
+newBtn.addEventListener("click", () => {
+  document.querySelectorAll(".word-button").forEach(b=>{
+    b.classList.remove("correct","incorrect","selected");
+  });
+  newSentence();
+});
+
+newSentence();
+updateScoreDisplay();
+</script>
+
+</body>
+</html>
